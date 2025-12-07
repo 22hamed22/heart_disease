@@ -1,6 +1,9 @@
 # heart_disease
 # Heart Disease Risk Assessment
 
+open the app via link:
+https://heartdisease-i76uzpgvnqnsr3s2uimnqe.streamlit.app/
+
 ## Quick start
 
 1. Create a virtual environment:
