@@ -1,58 +1,87 @@
-"""
-app.py - Streamlit app for Heart Disease Risk Assessment
-Run: streamlit run app.py
-This app loads a saved model 'heart_model.joblib' if present; otherwise it will
-train a model on heart_disease_sample.csv automatically.
-"""
 import streamlit as st
 import pandas as pd
 import joblib
 from pathlib import Path
-import subprocess
-import sys
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.pipeline import Pipeline
 
-MODEL_PATH = Path('heart_model.joblib')
-DATA_PATH = Path('heart_disease_sample.csv')
+# Paths
+MODEL_PATH = Path("heart_model.joblib")
+DATA_PATH = Path("heart_disease.csv")  # <-- make sure your CSV has this exact name
 
-def train_if_needed():
-    if not MODEL_PATH.exists():
-        st.info("No pre-trained model found. Training model (may take a moment)...")
-        subprocess.check_call([sys.executable, 'train_model.py', '--data', str(DATA_PATH), '--model_out', str(MODEL_PATH)])
-    return joblib.load(MODEL_PATH)
+# =========================
+# TRAIN MODEL INSIDE APP ✅
+# =========================
+def train_model():
+    df = pd.read_csv(DATA_PATH)
+    X = df.drop("target", axis=1)
+    y = df["target"]
 
-st.set_page_config(page_title="Heart Disease Risk Assessment", layout="centered")
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=0.2, random_state=42, stratify=y
+    )
+
+    model = Pipeline([
+        ("scaler", StandardScaler()),
+        ("rf", RandomForestClassifier(n_estimators=100, random_state=42))
+    ])
+
+    model.fit(X_train, y_train)
+    joblib.dump(model, MODEL_PATH)
+    return model
+
+# =========================
+# LOAD MODEL SAFELY ✅
+# =========================
+def load_model():
+    if MODEL_PATH.exists():
+        return joblib.load(MODEL_PATH)
+    else:
+        st.warning("Training model for the first time...")
+        return train_model()
+
+# =========================
+# STREAMLIT UI ✅
+# =========================
+st.set_page_config(page_title="Heart Disease Predictor", layout="centered")
 st.title("❤️ Heart Disease Risk Assessment")
-st.write("Enter patient data to predict heart disease risk (binary classification).")
+
+model = load_model()
 
 with st.form("input_form"):
-    age = st.number_input("Age", min_value=1, max_value=120, value=50)
-    sex = st.selectbox("Sex", options={1: "Male", 0: "Female"}, format_func=lambda x: {1:"Male",0:"Female"}[x])
-    cp = st.selectbox("Chest Pain Type (cp)", options=[0,1,2,3], index=1)
-    trestbps = st.number_input("Resting Blood Pressure (trestbps)", min_value=50, max_value=250, value=130)
-    chol = st.number_input("Serum Cholesterol (chol)", min_value=100, max_value=600, value=200)
-    fbs = st.selectbox("Fasting Blood Sugar > 120 mg/dl (fbs)", options={0:"No",1:"Yes"}, format_func=lambda x: {0:"No",1:"Yes"}[x])
-    restecg = st.selectbox("Resting ECG (restecg)", options=[0,1,2], index=0)
-    thalach = st.number_input("Max Heart Rate Achieved (thalach)", min_value=60, max_value=220, value=150)
-    exang = st.selectbox("Exercise Induced Angina (exang)", options={0:"No",1:"Yes"}, format_func=lambda x: {0:"No",1:"Yes"}[x])
-    oldpeak = st.number_input("ST depression induced by exercise (oldpeak)", min_value=0.0, max_value=10.0, value=1.0, step=0.1)
-    slope = st.selectbox("Slope of peak exercise ST segment (slope)", options=[0,1,2], index=1)
-    ca = st.selectbox("Number of major vessels colored (ca)", options=[0,1,2,3,4], index=0)
-    thal = st.selectbox("Thal (3 = normal, 6 = fixed defect, 7 = reversible defect)", options=[3,6,7], index=0)
+    age = st.number_input("Age", 1, 120, 50)
+    sex = st.selectbox("Sex", [0, 1], format_func=lambda x: "Male" if x == 1 else "Female")
+    cp = st.selectbox("Chest Pain Type", [0, 1, 2, 3])
+    trestbps = st.number_input("Resting Blood Pressure", 50, 250, 130)
+    chol = st.number_input("Cholesterol", 100, 600, 200)
+    fbs = st.selectbox("Fasting Blood Sugar > 120", [0, 1])
+    restecg = st.selectbox("Rest ECG", [0, 1, 2])
+    thalach = st.number_input("Max Heart Rate", 60, 220, 150)
+    exang = st.selectbox("Exercise Induced Angina", [0, 1])
+    oldpeak = st.number_input("Oldpeak", 0.0, 10.0, 1.0)
+    slope = st.selectbox("Slope", [0, 1, 2])
+    ca = st.selectbox("Major Vessels", [0, 1, 2, 3])
+    thal = st.selectbox("Thal", [3, 6, 7])
 
     submitted = st.form_submit_button("Predict")
 
 if submitted:
-    model = train_if_needed()
     input_df = pd.DataFrame([{
-        'age': age, 'sex': sex, 'cp': cp, 'trestbps': trestbps, 'chol': chol,
-        'fbs': fbs, 'restecg': restecg, 'thalach': thalach, 'exang': exang,
-        'oldpeak': oldpeak, 'slope': slope, 'ca': ca, 'thal': thal
+        "age": age, "sex": sex, "cp": cp, "trestbps": trestbps,
+        "chol": chol, "fbs": fbs, "restecg": restecg,
+        "thalach": thalach, "exang": exang, "oldpeak": oldpeak,
+        "slope": slope, "ca": ca, "thal": thal
     }])
-    pred = model.predict(input_df)[0]
-    prob = model.predict_proba(input_df)[0][1] if hasattr(model, 'predict_proba') else None
-    if pred == 1:
-        st.error(f"High risk of heart disease (probability ≈ {prob:.2f})" if prob is not None else "High risk of heart disease")
+
+    prediction = model.predict(input_df)[0]
+    probability = model.predict_proba(input_df)[0][1]
+
+    if prediction == 1:
+        st.error(f"⚠️ High Risk of Heart Disease (Probability: {probability:.2f})")
     else:
-        st.success(f"Low risk of heart disease (probability ≈ {prob:.2f})" if prob is not None else "Low risk of heart disease")
-    st.write("### Input data")
+        st.success(f"✅ Low Risk of Heart Disease (Probability: {probability:.2f})")
+
+    st.write("### Entered Data")
     st.write(input_df)
